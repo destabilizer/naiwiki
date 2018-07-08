@@ -5,36 +5,37 @@ from markdown import Markdown
 
 class WikiController:
     def __init__(self):
-        mddir = None
-        indexfile = None
-        tchanged = None
-        outhtml = None
+        self.mddir = None
+        self.indexfile = None
+        self.tchanged = None
+        self.outhtml = None
 
     def setDir(self, wikidir):
-        mddir = wikidir
+        self.mddir = wikidir
 
     def setIndex(self, wikiindex):
-        indexfile = wikiindex
-        tchanged = os.stat(self.indexfile).st_mtime
+        self.indexfile = wikiindex
+        self.tchanged = os.stat(self.indexfile).st_mtime
 
     def setOut(self, outfile):
-        outhtml = outfile
+        self.outhtml = outfile
 
     def checkIndex(self):
-        return (os.stat(self.indexfile).st_mtime == self.tchanged)
+        return (self.tchanged == os.stat(self.indexfile).st_mtime)
 
     def forceUpdate(self):
-        ind = open(indexfile)
+        ind = open(self.indexfile)
         gluemd = ""
         for l in ind.readlines():
-            lp = os.path.join(mddir, l)
-            gluemd += open(lp).read()
+            lp = os.path.join(self.mddir, l)
+            gluemd += open(lp.split()[0]).read()
             gluemd += "\n\n"
         m = Markdown(output_format="html")
         htmlstr = m.convert(gluemd)
-        outstream = open(outhtml, "w")
+        outstream = open(self.outhtml, "w")
         outstream.write(htmlstr)
         outstream.close()
+        self.tchanged == os.stat(self.indexfile).st_mtime
 
     def update(self):
         if not self.checkIndex():
@@ -42,6 +43,8 @@ class WikiController:
 
 if __name__ == "__main__":
     import time
+    import traceback
+    import logging
     
     # argparse must be added
     WIKI_DIR = os.path.join(os.getcwd(), "wiki")
@@ -52,8 +55,11 @@ if __name__ == "__main__":
     wc.setDir(WIKI_DIR)
     wc.setIndex(INDEX_FILE)
     wc.setOut(OUT_HTML)
+    wc.forceUpdate()
 
     while True:
         time.sleep(10)
         try:
             wc.update()
+        except Exception as e:
+            logging.error(traceback.format_exc())
