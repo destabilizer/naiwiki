@@ -26,10 +26,10 @@ class WikiController:
         res = subprocess.run(['git', 'log', '-n', '1'], cwd=self.gitdir, stdout=subprocess.PIPE)
         return res.stdout.decode('utf-8').split()[1]
 
-    def setUpToDate(self):
+    def _setUpToDate(self):
         self.upcommit = self.upCommit()
     
-    def compileHTML(self, filename=ROOT_FILE):
+    def _compileHTML(self, filename=ROOT_FILE):
         head, body = self._compile(filename)
         outhtml = '<!DOCTYPE html>\n<html>\n<meta charset="UTF-8">\n\n<head>\n' +\
                   head + '\n</head>\n<body>' + body + "\n</body>\n</html>\n"
@@ -41,7 +41,7 @@ class WikiController:
     def _compilecmd(self, line):
         l = line.split()
         if l[0] == "@compile":
-            self.compileHTML(filename=l[1])
+            self._compileHTML(filename=l[1])
             return ("", "")
         elif l[0] == "@insert":
             t = self._compile(l[1])
@@ -60,8 +60,10 @@ class WikiController:
         srcmd = ""
         for l in srclines:
             if l[0] == "@":
-                outbody += self._md.convert(srcmd) + "\n"; scrmd = ""
                 t = self._compilecmd(l)
+                if t[1] != "":
+                    outbody += self._md.convert(srcmd) + "\n"
+                    scrmd = ""
                 outhead += t[0]; outbody += t[1]
             else:
                 srcmd += l
@@ -70,8 +72,8 @@ class WikiController:
 
     def update(self):
         if not self.isUpToDate():
-            self.compileHTML()
-            self.setUpToDate()
+            self._compileHTML()
+            self._setUpToDate()
 
 if __name__ == "__main__":
     import time
