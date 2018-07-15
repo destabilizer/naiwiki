@@ -2,83 +2,91 @@
 
 import os, os.path
 from markdown import Markdown
+import subprocess
+
+ROOT_FILE = "index.md"
 
 class WikiController:
     def __init__(self):
-        self.mddir = None
-        self.indexfile = None
-        self.tchanged = None
-        self.outhtml = None
-        self.title = ""
-        self.style = None
+        self.gitdir = None
+        self.outdir = None
+        self.lastcommit = None
+        self._md = Markdown()
 
-    def setDir(self, wikidir):
-        self.mddir = wikidir
+    def setGit(self, gitDir):
+        self.gitdir = gitDir
+    
+    def setOut(self, outDir):
+        self.outdir = outDir
+    
+    def isUpToDate(self):
+        return self.lastcommit == self.upCommit()
 
-    def setIndex(self, wikiindex):
-        self.indexfile = wikiindex
-        self.tchanged = os.stat(self.indexfile).st_mtime
+    def upCommit(self):
+        res = subprocess.run(['git', 'log', '-n', '1'], cwd=self.gitdir, stdout=subprocess.PIPE)
+        return res.stdout.decode('utf-8').split()[1]
 
-    def setOut(self, outfile):
-        self.outhtml = outfile
+    def setUpToDate(self):
+        self.upcommit = self.upCommit()
+    
+    def compileHTML(self, filename=ROOT_FILE):
+        head, body = self._compile(filename)
+        outhtml = '<!DOCTYPE html>\n<html>\n<meta charset="UTF-8">\n\n<head>\n' +\
+                  head + '\n</head>\n<body>' + body + "\n</body>\n</html>\n"
+        outname = os.path.join(self.outdir, ".".join(filename.split(".")[:-1]) + ".html")
+        f = open(outname, "w")
+        f.write(outhtml)
+        f.close()
+        
+    def _compilecmd(self, line):
+        l = line.split()
+        if l[0] == "@compile":
+            self.compileHTML(filename=l[1])
+            return ("", "")
+        elif l[0] == "@insert":
+            t = self._compile(l[1])
+            return ("", t[1])
+        elif  l[0] == "@style":
+            return ('<link rel="stylesheet" type="text/css" href="' + l[1] + '">', "")
+        elif l[0] == "@title":
+            return ('<title>' + ' '.join(l[1:]) + '</title>', "")
+        else:
+            ... # what?
 
-    def setTitle(self, wikititle):
-        self.title = wikititle
-
-    def setStyle(self, stylename):
-        self.style = stylename
-
-    def checkIndex(self):
-        return (self.tchanged == os.stat(self.indexfile).st_mtime)
-
-    def forceUpdate(self):
-        ind = open(self.indexfile)
-        gluemd = ""
-        for l in ind.readlines():
-            lp = os.path.join(self.mddir, l)
-            gluemd += open(lp.split()[0]).read()
-            gluemd += "\n\n"
-        m = Markdown(output_format="html")        
-        htmlstr = m.convert(gluemd)
-        wrp = self._wrapping()
-        htmlstr = wrp[0] + htmlstr + wrp[1]
-        outstream = open(self.outhtml, "w")
-        outstream.write(htmlstr)
-        outstream.close()
-        self.tchanged == os.stat(self.indexfile).st_mtime
+    def _compile(self, filename):
+        src = open(os.path.join(self.gitdir, filename))
+        srclines = src.readlines()
+        outhead, outbody = "", ""
+        srcmd = ""
+        for l in srclines:
+            if l[0] == "@":
+                outbody += self._md.convert(srcmd) + "\n"; scrmd = ""
+                t = self._compilecmd(l)
+                outhead += t[0]; outbody += t[1]
+            else:
+                srcmd += l
+        outbody += self._md.convert(srcmd)
+        return (outhead, outbody)
 
     def update(self):
-        if not self.checkIndex():
-            self.forceUpdate()
-
-    def _wrapping(self):
-        return ('<!DOCTYPE html>\n<html>\n<meta charset="UTF-8">\n\n<head>\n<title>' + self.title + "</title>" +\
-               ('<link rel="stylesheet" type="text/css" href="' + self.style + '">' if self.style else "") +\
-                "</head>\n<body>", "</body>\n</html>")
+        if not self.isUpToDate():
+            self.compileHTML()
+            self.setUpToDate()
 
 if __name__ == "__main__":
     import time
     import traceback
     import logging
+    import sys
     
-    # argparse must be added
-    WIKI_DIR = os.path.join(os.getcwd(), "wiki")
-    INDEX_FILE = os.path.join(WIKI_DIR, "index.txt")
-    OUT_HTML = os.path.join(WIKI_DIR, "index.html")
-    CSS_STYLE = os.path.join(WIKI_DIR, "style.css")
-    WIKI_TITLE = "Wiki"
-
     wc = WikiController()
-    wc.setDir(WIKI_DIR)
-    wc.setIndex(INDEX_FILE)
-    wc.setOut(OUT_HTML)
-    wc.setStyle(CSS_STYLE)
-    wc.setTitle(WIKI_TITLE)
-    wc.forceUpdate()
+    wc.setGit(sys.argv[1])
+    wc.setOut(sys.argv[2])
 
     while True:
-        time.sleep(10)
         try:
+            subprocess.run(['git', 'pull'], cwd=wc.gitdir, stdout=subprocess.PIPE)
             wc.update()
         except Exception as e:
             logging.error(traceback.format_exc())
+        time.sleep(30)
